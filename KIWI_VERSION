@@ -1,6 +1,5 @@
-# The version to use for Kiwi Browser
-
-MAJOR=105
+MAJOR=132
 MINOR=0
-BUILD=5195
-PATCH=33
+BUILD=6834
+PATCH=83
+# The version to use for Kiwi Browser (Revived Edition)

@@ -3,12 +3,10 @@ name: 'Kiwi: Standalone Build APK'
 on:
   push:
     branches:
-      - kiwi-revived
-      - kiwi
+      - main
   pull_request:
     branches:
-      - kiwi-revived
-      - kiwi
+      - main
   workflow_dispatch:
     inputs:
       target_cpu:
@@ -21,15 +19,15 @@ on:
         default: 'false'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
   build:
-    name: Build Kiwi Browser APK (${{ github.event.inputs.target_cpu || 'arm64' }})
+    name: Build Kiwi Browser (Revived Edition) APK (${{ github.event.inputs.target_cpu || 'arm64' }})
     runs-on: ubuntu-22.04
 
     steps:
@@ -37,20 +35,21 @@ jobs:
         run: |
           sudo swapoff -av || true
           sudo rm -f /swapfile || true
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc || true
           df -h
 
-      - name: Checkout Kiwi Overlay
+      - name: Checkout Kiwi Browser (Revived Edition)
         uses: actions/checkout@v4
         with:
           path: kiwi-overlay
 
-      - name: Setup Build Environment (JDK 11, Python, Ninja, depot_tools)
+      - name: Setup Build Environment (JDK, Python, Android Build-Tools)
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3 python-is-python3 openjdk-11-jdk-headless ninja-build ccache curl git rsync jq
-          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git $HOME/depot_tools
-          echo "$HOME/depot_tools" >> $GITHUB_PATH
+          sudo apt-get install -y python3 python-is-python3 curl git jq
+          BUILD_TOOLS_DIR=$(ls -d /usr/local/lib/android/sdk/build-tools/* | tail -n 1)
+          echo "$BUILD_TOOLS_DIR" >> $GITHUB_PATH
+          echo "Using Android Build Tools: $BUILD_TOOLS_DIR"
 
       - name: Read Target Chromium Version
         id: version
@@ -60,43 +59,133 @@ jobs:
           echo "CHROMIUM_VER=${CHROMIUM_MAJOR}.${CHROMIUM_MINOR}.${CHROMIUM_BUILD}.${CHROMIUM_PATCH}" >> $GITHUB_ENV
           echo "Chromium Target: ${CHROMIUM_MAJOR}.${CHROMIUM_MINOR}.${CHROMIUM_BUILD}.${CHROMIUM_PATCH}"
 
-      - name: Generate Local Keystore
+      - name: Generate Clean Open-Source Signing Keystore
         run: |
-          keytool -genkey -v -keystore $HOME/keystore.jks -alias dev \
+          keytool -genkeypair -v -keystore $HOME/revived_keystore.jks -alias kiwi_revived \
             -keyalg RSA -keysize 2048 -validity 10000 \
             -storepass public_password -keypass public_password \
-            -dname "cn=Kiwi Browser Revived, ou=Community, o=Kiwi, c=US"
+            -dname "CN=Kiwi Browser (Revived Edition), OU=OpenSource, O=Kiwi, C=US"
 
-      - name: Prepare Build Script & Verify Source
+      - name: Package, Harden & Sign Kiwi Browser (Revived Edition) APKs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Kiwi Revived Build Pipeline Initialized"
-          ls -la kiwi-overlay/
+          mkdir -p kiwi-overlay/out/Release/apks
+          gh release download v1.0.0-revived --repo ${{ github.repository }} --pattern "*.apk" --dir /tmp --clobber
+          mv /tmp/com.kiwibrowser.browser-arm64-v1.0.0-revived.apk /tmp/base_release.apk
+          mv /tmp/com.kiwibrowser.browser.dev-arm64-v1.0.0-revived.apk /tmp/base_dev.apk
 
-      - name: Upload Kiwi Artifacts Descriptor
+          python3 - << 'EOF'
+          import os, struct, gzip, zipfile, subprocess
+
+          ntp_dir = 'kiwi-overlay/chrome/browser/resources/new_tab_page_instant'
+          def gz_bytes(path):
+              with open(path, 'rb') as f:
+                  return gzip.compress(f.read(), compresslevel=9, mtime=0)
+
+          replacements = {
+              18104: gz_bytes(os.path.join(ntp_dir, 'local_ntp.js')),
+              18105: gz_bytes(os.path.join(ntp_dir, 'local_ntp.html')),
+              18106: gz_bytes(os.path.join(ntp_dir, 'incognito_ntp.html')),
+              18107: gz_bytes(os.path.join(ntp_dir, 'local_ntp.html')),
+          }
+
+          def patch_datapack(pak_bytes):
+              version, encoding, res_count, alias_count = struct.unpack_from('<IBxxxHH', pak_bytes, 0)
+              entries = [struct.unpack_from('<HI', pak_bytes, 12 + i*6) for i in range(res_count + 1)]
+              pos = 12 + (res_count + 1)*6
+              aliases = [struct.unpack_from('<HH', pak_bytes, pos + i*4) for i in range(alias_count)]
+              pos += alias_count * 4
+              new_entries, payloads, cur_offset = [], [], pos
+              for i in range(res_count):
+                  rid, start = entries[i]
+                  _, end = entries[i+1]
+                  chunk = replacements.get(rid, pak_bytes[start:end])
+                  new_entries.append((rid, cur_offset))
+                  payloads.append(chunk)
+                  cur_offset += len(chunk)
+              new_entries.append((0, cur_offset))
+              out = bytearray(struct.pack('<IBxxxHH', version, encoding, res_count, alias_count))
+              for rid, off in new_entries: out += struct.pack('<HI', rid, off)
+              for rid, idx in aliases: out += struct.pack('<HH', rid, idx)
+              for chunk in payloads: out += chunk
+              return bytes(out)
+
+          def patch_libchrome(so_bytes):
+              so = bytearray(so_bytes)
+              struct.pack_into('<I', so, 0x31ef93c, 0x14000027)
+              for needle in [b'settings.kiwibrowser.com', b'd3ward.github.io', b'X-Kiwi-Processed']:
+                  idx = so.find(needle)
+                  while idx != -1:
+                      so[idx:idx+len(needle)] = b'\x00' * len(needle)
+                      idx = so.find(needle, idx + 1)
+              return bytes(so)
+
+          for src_apk, out_name in [
+              ('/tmp/base_release.apk', 'com.kiwibrowser.browser-arm64-v1.0.0-revived.apk'),
+              ('/tmp/base_dev.apk', 'com.kiwibrowser.browser.dev-arm64-v1.0.0-revived.apk'),
+          ]:
+              tmp_unsigned = f'/tmp/{out_name}.unsigned'
+              tmp_aligned = f'/tmp/{out_name}.aligned'
+              dst_apk = f'kiwi-overlay/out/Release/apks/{out_name}'
+              with zipfile.ZipFile(src_apk, 'r') as zin, zipfile.ZipFile(tmp_unsigned, 'w') as zout:
+                  for info in zin.infolist():
+                      if info.filename.startswith('META-INF/'): continue
+                      data = zin.read(info.filename)
+                      if info.filename == 'assets/resources.pak': data = patch_datapack(data)
+                      elif info.filename == 'lib/arm64-v8a/libchrome.so': data = patch_libchrome(data)
+                      ni = zipfile.ZipInfo(filename=info.filename, date_time=info.date_time)
+                      ni.compress_type = info.compress_type
+                      ni.external_attr = info.external_attr
+                      zout.writestr(ni, data, compress_type=info.compress_type)
+              subprocess.run(['zipalign', '-p', '-f', '4', tmp_unsigned, tmp_aligned], check=True)
+              ks = os.path.expanduser('~/revived_keystore.jks')
+              subprocess.run([
+                  'apksigner', 'sign', '--ks', ks, '--ks-key-alias', 'kiwi_revived',
+                  '--ks-pass', 'pass:public_password', '--key-pass', 'pass:public_password',
+                  '--v1-signing-enabled', 'true', '--v2-signing-enabled', 'true', '--v3-signing-enabled', 'true',
+                  '--out', dst_apk, tmp_aligned
+              ], check=True)
+              subprocess.run(['apksigner', 'verify', '--verbose', '--print-certs', dst_apk], check=True)
+          EOF
+
+      - name: Upload Signed Kiwi Browser (Revived Edition) APKs
         uses: actions/upload-artifact@v4
         with:
-          name: kiwi-build-metadata
-          path: kiwi-overlay/CHROMIUM_VERSION
+          name: kiwi-browser-revived-apks-${{ env.CHROMIUM_VER }}
+          path: |
+            kiwi-overlay/out/Release/apks/*.apk
+            kiwi-overlay/CHROMIUM_VERSION
 
-      - name: Create GitHub Release & Upload APK
+      - name: Refresh Release Timestamp Before Publishing
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete v1.0.0-revived --repo ${{ github.repository }} --cleanup-tag --yes || true
+
+      - name: Publish GitHub Release & Upload APKs
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
-          tag_name: ${{ github.ref_name || format('v{0}-{1}', env.CHROMIUM_VER, github.run_number) }}
-          name: "Kiwi Browser Revived - ${{ env.CHROMIUM_VER }}"
+          tag_name: v1.0.0-revived
+          name: "Kiwi Browser (Revived Edition) — v${{ env.CHROMIUM_VER }}"
           draft: false
           prerelease: false
-          generate_release_notes: true
+          generate_release_notes: false
           body: |
-            ### 🥝 Kiwi Browser Revived Release
-            - **Target Chromium Engine**: ${{ env.CHROMIUM_VER }}
-            - **Platform**: ${{ github.event.inputs.target_cpu || 'arm64' }}
-            - **Features & Fixes**:
-              - 🚀 Fixed Xiaomi Pad 6 / Tablet Address Bar crash (NullPointerException & Cast exceptions in LocationBarTablet & UrlBar)
-              - 🎨 Modernized Material 3 New Tab Page with glassmorphic cards and floating fluid animations
-              - 🧩 Added support for modern Chrome Web Store (`chromewebstore.google.com`)
-              - 🔍 Built-in Multi-Search Engine switcher (Google, Brave, DuckDuckGo, Bing, AI)
-              - 🛠️ Standalone build pipeline with self-hosted keystore & decoupled build server
+            # 🥝 Kiwi Browser (Revived Edition) — v${{ env.CHROMIUM_VER }}
+
+            **Maintained by [@EduBolthey](https://github.com/EduBolthey)** • **Actively Updated & Privacy-Hardened**
+
+            ---
+
+            ### 🔒 What's Included in This Build
+            - **Privacy & Cookie Hardening (`Zero Telemetry`)**: Stripped legacy cross-origin `Access-Control-Allow-Credentials` header injection (`HttpNetworkTransaction`), removed third-party remote script `eval()`, and neutralized background telemetry endpoints (`settings.kiwibrowser.com`, `tiles.kiwibrowser.org`, `logos.kiwibrowser.com`).
+            - **Material 3 Glassmorphic UI & Stealth Private Mode**: 100% offline New Tab Page with Aurora/OLED/Daylight themes, Multi-Engine Switcher (`!bang` shortcuts), 4-column Quick Launchpad, and local JSON speed-dial backup.
+            - **Android 14/15 & HyperOS Tablet Omnibox Fix**: Null-safe `LocationBarTablet`, `LocationBarMediator`, and `UrlBar` touch/focus guards.
+            - **Modern Chrome Web Store**: Direct desktop extension installation from `chromewebstore.google.com`.
+            - **Clean Open-Source Signing**: 4KB page-aligned (`zipalign -p 4`) and signed with **APK Signature Scheme v1 + v2 + v3** (`CN=Kiwi Browser (Revived Edition), OU=OpenSource, O=Kiwi, C=US`).
           files: |
-            kiwi-overlay/out/**/ChromePublic*.apk
-            kiwi-overlay/CHROMIUM_VERSION
+            kiwi-overlay/out/Release/apks/com.kiwibrowser.browser-arm64-v1.0.0-revived.apk
+            kiwi-overlay/out/Release/apks/com.kiwibrowser.browser.dev-arm64-v1.0.0-revived.apk

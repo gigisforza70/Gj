@@ -30,3 +30,46 @@ jspm_packages/
 
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
+
+### Kiwi Browser / Chromium Build & Release Outputs ###
+out/
+build/Release
+secondary_disk/
+*.apk
+*.aab
+*.apks
+*.idsig
+*.map
+
+### Signing Keys, Keystores & Certificates (NEVER COMMIT) ###
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+*.der
+*.crt
+keystore*
+dev_keystore*
+
+### Browser Runtime Profiles, Cookies & Session Data (NEVER COMMIT) ###
+User Data/
+user_data/
+profile*/
+Default/Cookies*
+Default/Login Data*
+Default/Web Data*
+Default/History*
+Default/Sessions/
+Default/Network/
+Cookies
+Cookies-journal
+Local State
+
+### OS & Editor Temp Files ###
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+*.swp

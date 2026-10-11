@@ -55,15 +55,10 @@ SearchURLFetcher::SearchURLFetcher(
 SearchURLFetcher::~SearchURLFetcher() {}
 
 void SearchURLFetcher::FetchURL() {
-  // Don't allow a fetch if one is pending.
-  if (already_loaded_)
-    return;
-  DCHECK(!url_loader_);
-  url_loader_ = CreateURLFetcher();
-  url_loader_->DownloadToStringOfUnboundedSizeUntilCrashAndDie(
-      url_loader_factory_.get(),
-      base::BindOnce(&SearchURLFetcher::OnURLLoadComplete,
-                     base::Unretained(this)));
+  // Privacy hardening: disabled remote search provider override phone-home to
+  // defunct/external settings.kiwibrowser.com endpoint.
+  already_loaded_ = true;
+  return;
 }
 
 std::unique_ptr<network::SimpleURLLoader> SearchURLFetcher::CreateURLFetcher() {
