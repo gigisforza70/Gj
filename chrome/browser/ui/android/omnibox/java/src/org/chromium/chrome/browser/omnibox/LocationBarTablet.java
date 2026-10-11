@@ -75,33 +75,40 @@ class LocationBarTablet extends LocationBarLayout {
     public boolean onTouchEvent(MotionEvent event) {
         if (mTargets == null) return true;
 
-        View selectedTarget = null;
-        float selectedDistance = 0;
-        // newX and newY are in the coordinates of the selectedTarget.
-        float newX = 0;
-        float newY = 0;
-        for (View target : mTargets) {
-            if (!target.isShown()) continue;
+        try {
+            View selectedTarget = null;
+            float selectedDistance = 0;
+            // newX and newY are in the coordinates of the selectedTarget.
+            float newX = 0;
+            float newY = 0;
+            for (View target : mTargets) {
+                if (target == null || !target.isShown()) continue;
 
-            mCachedTargetBounds.set(0, 0, target.getWidth(), target.getHeight());
-            offsetDescendantRectToMyCoords(target, mCachedTargetBounds);
-            float x = event.getX();
-            float y = event.getY();
-            float dx = distanceToRange(mCachedTargetBounds.left, mCachedTargetBounds.right, x);
-            float dy = distanceToRange(mCachedTargetBounds.top, mCachedTargetBounds.bottom, y);
-            float distance = Math.abs(dx) + Math.abs(dy);
-            if (selectedTarget == null || distance < selectedDistance) {
-                selectedTarget = target;
-                selectedDistance = distance;
-                newX = x + dx;
-                newY = y + dy;
+                try {
+                    mCachedTargetBounds.set(0, 0, target.getWidth(), target.getHeight());
+                    offsetDescendantRectToMyCoords(target, mCachedTargetBounds);
+                    float x = event.getX();
+                    float y = event.getY();
+                    float dx = distanceToRange(mCachedTargetBounds.left, mCachedTargetBounds.right, x);
+                    float dy = distanceToRange(mCachedTargetBounds.top, mCachedTargetBounds.bottom, y);
+                    float distance = Math.abs(dx) + Math.abs(dy);
+                    if (selectedTarget == null || distance < selectedDistance) {
+                        selectedTarget = target;
+                        selectedDistance = distance;
+                        newX = x + dx;
+                        newY = y + dy;
+                    }
+                } catch (Exception ignored) {
+                }
             }
+
+            if (selectedTarget == null) return false;
+
+            event.setLocation(newX, newY);
+            return selectedTarget.onTouchEvent(event);
+        } catch (Throwable t) {
+            return false;
         }
-
-        if (selectedTarget == null) return false;
-
-        event.setLocation(newX, newY);
-        return selectedTarget.onTouchEvent(event);
     }
 
     @Override
@@ -137,19 +144,28 @@ class LocationBarTablet extends LocationBarLayout {
      * hiding buttons.
      */
     /* package */ void resetValuesAfterAnimation() {
-        mMicButton.setTranslationX(0);
-        mLensButton.setTranslationX(0);
-        mDeleteButton.setTranslationX(0);
-        mBookmarkButton.setTranslationX(0);
-        mSaveOfflineButton.setTranslationX(0);
-        mLocationBarIcon.setTranslationX(0);
-        mUrlBar.setTranslationX(0);
-
-        mMicButton.setAlpha(1.f);
-        mLensButton.setAlpha(1.f);
-        mDeleteButton.setAlpha(1.f);
-        mBookmarkButton.setAlpha(1.f);
-        mSaveOfflineButton.setAlpha(1.f);
+        if (mMicButton != null) {
+            mMicButton.setTranslationX(0);
+            mMicButton.setAlpha(1.f);
+        }
+        if (mLensButton != null) {
+            mLensButton.setTranslationX(0);
+            mLensButton.setAlpha(1.f);
+        }
+        if (mDeleteButton != null) {
+            mDeleteButton.setTranslationX(0);
+            mDeleteButton.setAlpha(1.f);
+        }
+        if (mBookmarkButton != null) {
+            mBookmarkButton.setTranslationX(0);
+            mBookmarkButton.setAlpha(1.f);
+        }
+        if (mSaveOfflineButton != null) {
+            mSaveOfflineButton.setTranslationX(0);
+            mSaveOfflineButton.setAlpha(1.f);
+        }
+        if (mLocationBarIcon != null) mLocationBarIcon.setTranslationX(0);
+        if (mUrlBar != null) mUrlBar.setTranslationX(0);
     }
 
     /**
@@ -207,62 +223,66 @@ class LocationBarTablet extends LocationBarLayout {
         if (getLayoutDirection() != LAYOUT_DIRECTION_RTL) {
             // When the location bar layout direction is LTR, the buttons at the end (left side)
             // of the location bar need to stick to the left edge.
-            if (mSaveOfflineButton.getVisibility() == View.VISIBLE) {
+            if (mSaveOfflineButton != null && mSaveOfflineButton.getVisibility() == View.VISIBLE) {
                 mSaveOfflineButton.setTranslationX(offset);
-            } else {
+            } else if (mMicButton != null) {
                 mMicButton.setTranslationX(offset);
             }
 
-            if (mDeleteButton.getVisibility() == View.VISIBLE) {
+            if (mDeleteButton != null && mDeleteButton.getVisibility() == View.VISIBLE) {
                 mDeleteButton.setTranslationX(offset + deleteOffset);
-            } else {
+            } else if (mBookmarkButton != null) {
                 mBookmarkButton.setTranslationX(offset);
             }
         } else {
             // When the location bar layout direction is RTL, the location bar icon and url
             // container at the start (right side) of the location bar need to stick to the right
             // edge.
-            mLocationBarIcon.setTranslationX(offset);
-            mUrlBar.setTranslationX(offset);
+            if (mLocationBarIcon != null) mLocationBarIcon.setTranslationX(offset);
+            if (mUrlBar != null) mUrlBar.setTranslationX(offset);
 
-            if (mDeleteButton.getVisibility() == View.VISIBLE) {
+            if (mDeleteButton != null && mDeleteButton.getVisibility() == View.VISIBLE) {
                 mDeleteButton.setTranslationX(-deleteOffset);
             }
         }
     }
 
     /* package */ void setBookmarkButtonVisibility(boolean showBookmarkButton) {
-        mBookmarkButton.setVisibility(showBookmarkButton ? View.VISIBLE : View.GONE);
+        if (mBookmarkButton != null) {
+            mBookmarkButton.setVisibility(showBookmarkButton ? View.VISIBLE : View.GONE);
+        }
     }
 
     /* package */ void setSaveOfflineButtonVisibility(
             boolean showSaveOfflineButton, boolean isSaveOfflineButtonEnabled) {
-        mSaveOfflineButton.setVisibility(showSaveOfflineButton ? View.VISIBLE : View.GONE);
-        if (showSaveOfflineButton) mSaveOfflineButton.setEnabled(isSaveOfflineButtonEnabled);
+        if (mSaveOfflineButton != null) {
+            mSaveOfflineButton.setVisibility(showSaveOfflineButton ? View.VISIBLE : View.GONE);
+            if (showSaveOfflineButton) mSaveOfflineButton.setEnabled(isSaveOfflineButtonEnabled);
+        }
     }
 
     /* package */ boolean isSaveOfflineButtonVisible() {
-        return mSaveOfflineButton.getVisibility() == VISIBLE;
+        return mSaveOfflineButton != null && mSaveOfflineButton.getVisibility() == VISIBLE;
     }
 
     /* package */ boolean isDeleteButtonVisible() {
-        return mDeleteButton.getVisibility() == VISIBLE;
+        return mDeleteButton != null && mDeleteButton.getVisibility() == VISIBLE;
     }
 
     /* package */ boolean isMicButtonVisible() {
-        return mMicButton.getVisibility() == VISIBLE;
+        return mMicButton != null && mMicButton.getVisibility() == VISIBLE;
     }
 
     /* package */ float getMicButtonAlpha() {
-        return mMicButton.getAlpha();
+        return mMicButton != null ? mMicButton.getAlpha() : 0.f;
     }
 
     /* package */ boolean isLensButtonVisible() {
-        return mLensButton.getVisibility() == VISIBLE;
+        return mLensButton != null && mLensButton.getVisibility() == VISIBLE;
     }
 
     /* package */ float getLensButtonAlpha() {
-        return mLensButton.getAlpha();
+        return mLensButton != null ? mLensButton.getAlpha() : 0.f;
     }
 
     /**
