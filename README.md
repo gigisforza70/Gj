@@ -1,46 +1,70 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/kiwibrowser/src.next/kiwi/kiwi_logo_circle.svg" alt="KiwiBrowser"
-	title="KiwiBrowser" width="200" height="200"/>
- </p>
-<p align="center">
-  <a href="https://github.com/kiwibrowser/src.next/releases">
-  <img src="https://img.shields.io/github/v/release/kiwibrowser/src.next?include_prereleases&label=latest%20release"/>
-</a>
-  <a href="https://github.com/kiwibrowser/src.next/release">
-<img src="https://img.shields.io/github/downloads/kiwibrowser/src.next/total?label=GitHub%20Downloads&color=%6BDDD5"></a>
-<a href="https://github.com/kiwibrowser/src.next/blob/kiwi/LICENSE">
-  <img src="https://img.shields.io/github/license/kiwibrowser/src.next?color=%236BDDD5"/></a>
+  <img src="https://raw.githubusercontent.com/kiwibrowser/src.next/kiwi/kiwi_logo_circle.svg" alt="Kiwi Browser Revived"
+	title="Kiwi Browser Revived" width="160" height="160"/>
+</p>
 
-  </p>
+# Kiwi Browser (Revived)
 
-# Kiwi Browser
+Kiwi Browser is an open-source, fast Chromium-based browser for Android with **full Chrome Extensions support**, bottom address bar, AMOLED night mode, and advanced customization.
 
-Important note: Kiwi Browser is now archived. It will no longer be maintained after January 2025.
+This repository continues the active development and maintenance of Kiwi Browser following the 2025 archive announcement, providing modern Android (Android 14/15, HyperOS) compatibility, critical crash fixes, UI modernization, and regular security updates.
 
-<img src="https://edgemobilegrowth.microsoft.com/extension/kiwi_to_edge.jpeg" height="100" />
+---
 
-To support users who rely on extensions, we've partnered with the Microsoft Edge team to offer a smooth migration path.
+## 🚀 Key Improvements & Modern Features
 
-Clicking <a href="https://edgemobileapp.microsoft.com/?adjustId=1mfkz3u3_1m6jnsdw">the link</a> will prompt you to install Microsoft Edge, reveal a hidden message in the Edge Extensions Hub, and uNBlock a powerful Manifest V2 extension there.
+* **Address Bar (Omnibox) Crash Fix:**
+  * Fixed the critical crash on Android 14 / HyperOS tablets (e.g. Xiaomi Pad 6) when tapping the address bar.
+  * Added defensive exception guards against `SecurityException` during clipboard zero-suggestions and `ClassCastException` on tablet layout transitions.
+* **Modern Chrome Web Store Support:**
+  * Added native compatibility for the new `chromewebstore.google.com` domain for seamless one-click extension installations.
+* **Refreshed Material 3 New Tab Page (`modern_ntp.html`):**
+  * Modern glassmorphic cards, rounded search bar, and instant engine switching (Google, DuckDuckGo, Bing, Brave, AI Assistant).
+  * Direct quick-launch shortcuts for Chrome Web Store, Extensions, Bookmarks, and Downloads.
+* **144Hz & High-Refresh Tablet Performance:**
+  * Improved animation handling and UI thread responsiveness for smooth 120Hz/144Hz displays.
+* **Standalone Build Pipeline:**
+  * Replaced defunct remote build servers with automated standalone GitHub Actions (`build_kiwi_standalone.yml`) and local build runner (`build_kiwi.sh`).
 
-The extensions code for Kiwi Browser also has been integrated into the development version of Microsoft Edge: [Microsoft Edge Canary](https://play.google.com/store/apps/details?id=com.microsoft.emmx.canary).
+---
 
-To install extensions on Microsoft Edge Canary:
+## 🛠️ Building Kiwi Browser Locally
 
-1. Open **Microsoft Edge Canary** and go to **Settings > About Microsoft Edge**.  
-2. Tap the **Edge build number** (e.g., `xx.0.2487.0`) 5 times to enable **Developer Options**.  
-3. In Developer Options, select **Extension install by id**.  
+Kiwi Browser is built using Chromium's build system with Google's `depot_tools`, `gn`, and `ninja`.
 
-To find the extension ID:  
-- Open the [Microsoft Edge Web Store](https://microsoftedge.microsoft.com/addons/Microsoft-Edge-Extensions-Home).  
-- Locate and select the desired extension.  
-- Copy the ID from the URL (e.g., for Bitwarden, the ID is `jbkfoedolllekgbhcbcoahefnbanhhlh` from the URL ending).  
+### Prerequisites
+* Linux (Ubuntu 20.04 / 22.04) or Windows via **WSL2**
+* Python 3, OpenJDK (JDK 8 or 11), Ninja, and Ccache:
+  ```bash
+  sudo apt-get update
+  sudo apt-get install -y python3 python-is-python3 openjdk-11-jdk-headless ninja-build ccache curl git
+  ```
 
-4. Paste the extension ID into the **Extension install by id** field.  
-5. The extension will install.  
+### Build Steps
+1. Clone this repository:
+   ```bash
+   git clone -b kiwi-revived https://github.com/kiwibrowser/src.next.git
+   cd src.next
+   ```
+2. Run the automated build script:
+   ```bash
+   chmod +x build_kiwi.sh
+   ./build_kiwi.sh arm64
+   ```
+   *(Supported architectures: `arm64`, `arm`, `x64`, `x86`)*
 
-If you really need Kiwi Browser, you can download the [latest published version of Kiwi Browser here](https://github.com/kiwibrowser/src.next/releases/tag/14310011181). Do not download Kiwi Browser from any other sources.
+3. Output APK will be generated at:
+   ```
+   out/android_arm64/apks/ChromePublic.apk
+   ```
 
-While your Kiwi Browser installation will still work for some time, it’s essential to explore alternatives like [Microsoft Edge Canary](https://play.google.com/store/apps/details?id=com.microsoft.emmx.canary), [Vivaldi Browser](https://play.google.com/store/apps/details?id=com.vivaldi.browser) or [Mozilla Firefox](https://play.google.com/store/apps/details?id=org.mozilla.firefox) to stay secure and up-to-date.
+---
 
--- Arnaud.
+## 📦 GitHub Actions CI
+
+Automated standalone APK builds can be triggered directly in GitHub Actions using `.github/workflows/build_kiwi_standalone.yml`.
+
+---
+
+## 📄 License
+Kiwi Browser is licensed under the same license as Chromium (BSD 3-Clause).

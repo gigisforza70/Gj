@@ -53,9 +53,15 @@ function load_ntp() {
         console.log('[new_ntp.html] Last online revision is: ' + localStorage.lastRevision);
       });
   } catch (err) {
-    console.log('[new_ntp.html] Fetch failed for: ' + err.message);
+    console.log('[new_ntp.html] Fetch failed: ' + err.message + ', falling back to modern_ntp.html');
+    window.location.replace('./modern_ntp.html');
   }
 }
+setTimeout(function() {
+  if (!localStorage.cachedRevision && document.body.innerHTML.trim() === '') {
+    window.location.replace('./modern_ntp.html');
+  }
+}, 1000);
 load_ntp();
 </script>
 </body>

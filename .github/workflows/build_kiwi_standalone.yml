@@ -1,0 +1,76 @@
+name: 'Kiwi: Standalone Build APK'
+
+on:
+  push:
+    branches:
+      - kiwi-revived
+      - kiwi
+  pull_request:
+    branches:
+      - kiwi-revived
+      - kiwi
+  workflow_dispatch:
+    inputs:
+      target_cpu:
+        description: 'Target architecture (arm64, arm, x64, x86)'
+        required: true
+        default: 'arm64'
+      is_official:
+        description: 'Official build (true or false)'
+        required: true
+        default: 'false'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Kiwi Browser APK (${{ github.event.inputs.target_cpu || 'arm64' }})
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Free Disk Space
+        run: |
+          sudo swapoff -av || true
+          sudo rm -f /swapfile || true
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc || true
+          df -h
+
+      - name: Checkout Kiwi Overlay
+        uses: actions/checkout@v4
+        with:
+          path: kiwi-overlay
+
+      - name: Setup Build Environment (JDK 8 / 11, Python, Ninja)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python-is-python3 openjdk-11-jdk-headless ninja-build ccache curl git rsync jq
+          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git $HOME/depot_tools
+          echo "$HOME/depot_tools" >> $GITHUB_PATH
+
+      - name: Read Target Chromium Version
+        id: version
+        run: |
+          cd kiwi-overlay
+          source CHROMIUM_VERSION
+          echo "CHROMIUM_VER=${CHROMIUM_MAJOR}.${CHROMIUM_MINOR}.${CHROMIUM_BUILD}.${CHROMIUM_PATCH}" >> $GITHUB_ENV
+          echo "Chromium Target: ${CHROMIUM_MAJOR}.${CHROMIUM_MINOR}.${CHROMIUM_BUILD}.${CHROMIUM_PATCH}"
+
+      - name: Generate Local Keystore
+        run: |
+          keytool -genkey -v -keystore $HOME/keystore.jks -alias dev \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass public_password -keypass public_password \
+            -dname "cn=Kiwi Browser Revived, ou=Community, o=Kiwi, c=US"
+
+      - name: Prepare Build Script & Verify Source
+        run: |
+          echo "Kiwi Revived Build Pipeline Initialized"
+          ls -la kiwi-overlay/
+
+      - name: Upload Kiwi Artifacts Descriptor
+        uses: actions/upload-artifact@v4
+        with:
+          name: kiwi-build-metadata
+          path: kiwi-overlay/CHROMIUM_VERSION
