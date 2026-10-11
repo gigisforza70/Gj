@@ -24,6 +24,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build Kiwi Browser APK (${{ github.event.inputs.target_cpu || 'arm64' }})
@@ -42,7 +45,7 @@ jobs:
         with:
           path: kiwi-overlay
 
-      - name: Setup Build Environment (JDK 8 / 11, Python, Ninja)
+      - name: Setup Build Environment (JDK 11, Python, Ninja, depot_tools)
         run: |
           sudo apt-get update
           sudo apt-get install -y python3 python-is-python3 openjdk-11-jdk-headless ninja-build ccache curl git rsync jq
@@ -74,3 +77,26 @@ jobs:
         with:
           name: kiwi-build-metadata
           path: kiwi-overlay/CHROMIUM_VERSION
+
+      - name: Create GitHub Release & Upload APK
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: ${{ github.ref_name || format('v{0}-{1}', env.CHROMIUM_VER, github.run_number) }}
+          name: "Kiwi Browser Revived - ${{ env.CHROMIUM_VER }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ### 🥝 Kiwi Browser Revived Release
+            - **Target Chromium Engine**: ${{ env.CHROMIUM_VER }}
+            - **Platform**: ${{ github.event.inputs.target_cpu || 'arm64' }}
+            - **Features & Fixes**:
+              - 🚀 Fixed Xiaomi Pad 6 / Tablet Address Bar crash (NullPointerException & Cast exceptions in LocationBarTablet & UrlBar)
+              - 🎨 Modernized Material 3 New Tab Page with glassmorphic cards and floating fluid animations
+              - 🧩 Added support for modern Chrome Web Store (`chromewebstore.google.com`)
+              - 🔍 Built-in Multi-Search Engine switcher (Google, Brave, DuckDuckGo, Bing, AI)
+              - 🛠️ Standalone build pipeline with self-hosted keystore & decoupled build server
+          files: |
+            kiwi-overlay/out/**/ChromePublic*.apk
+            kiwi-overlay/CHROMIUM_VERSION
