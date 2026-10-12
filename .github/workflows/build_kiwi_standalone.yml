@@ -4,15 +4,17 @@ on:
   push:
     branches:
       - main
+      - kiwi-revived
   pull_request:
     branches:
       - main
+      - kiwi-revived
   workflow_dispatch:
     inputs:
       target_cpu:
-        description: 'Target architecture (arm64, arm, x64, x86)'
+        description: 'Target architecture (all, arm64, arm, x64, x86)'
         required: true
-        default: 'arm64'
+        default: 'all'
       is_official:
         description: 'Official build (true or false)'
         required: true
@@ -71,9 +73,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p kiwi-overlay/out/Release/apks
-          gh release download v1.0.0-revived --repo ${{ github.repository }} --pattern "*.apk" --dir /tmp --clobber
-          mv /tmp/com.kiwibrowser.browser-arm64-v1.0.0-revived.apk /tmp/base_release.apk
-          mv /tmp/com.kiwibrowser.browser.dev-arm64-v1.0.0-revived.apk /tmp/base_dev.apk
+          UPSTREAM_URL="https://github.com/kiwibrowser/src.next/releases/download/14310011181"
+
+          # 1. Download base APKs (both 64-bit arm64 and 32-bit arm for Android 7/legacy MIUI)
+          curl -sL --retry 3 -o /tmp/base_release_arm64.apk "${UPSTREAM_URL}/com.kiwibrowser.browser-arm64-14310011181-github.apk"
+          curl -sL --retry 3 -o /tmp/base_dev_arm64.apk "${UPSTREAM_URL}/com.kiwibrowser.browser.dev-arm64-14310011181-github.apk"
+          curl -sL --retry 3 -o /tmp/base_release_arm.apk "${UPSTREAM_URL}/com.kiwibrowser.browser-arm-14310011181-github.apk"
+          curl -sL --retry 3 -o /tmp/base_dev_arm.apk "${UPSTREAM_URL}/com.kiwibrowser.browser.dev-arm-14310011181-github.apk"
 
           python3 - << 'EOF'
           import os, struct, gzip, zipfile, subprocess
@@ -111,7 +117,7 @@ jobs:
               for chunk in payloads: out += chunk
               return bytes(out)
 
-          def patch_libchrome(so_bytes):
+          def patch_libchrome_arm64(so_bytes):
               so = bytearray(so_bytes)
               struct.pack_into('<I', so, 0x31ef93c, 0x14000027)
               for needle in [b'settings.kiwibrowser.com', b'd3ward.github.io', b'X-Kiwi-Processed']:
@@ -121,10 +127,28 @@ jobs:
                       idx = so.find(needle, idx + 1)
               return bytes(so)
 
-          for src_apk, out_name in [
-              ('/tmp/base_release.apk', 'com.kiwibrowser.browser-arm64-v1.0.0-revived.apk'),
-              ('/tmp/base_dev.apk', 'com.kiwibrowser.browser.dev-arm64-v1.0.0-revived.apk'),
-          ]:
+          def patch_libchrome_arm(so_bytes):
+              so = bytearray(so_bytes)
+              for needle in [b'settings.kiwibrowser.com', b'd3ward.github.io', b'X-Kiwi-Processed']:
+                  idx = so.find(needle)
+                  while idx != -1:
+                      so[idx:idx+len(needle)] = b'\x00' * len(needle)
+                      idx = so.find(needle, idx + 1)
+              return bytes(so)
+
+          targets = [
+              ('/tmp/base_release_arm64.apk', 'com.kiwibrowser.browser-arm64-v1.0.0-revived.apk', 'arm64'),
+              ('/tmp/base_dev_arm64.apk', 'com.kiwibrowser.browser.dev-arm64-v1.0.0-revived.apk', 'arm64'),
+              ('/tmp/base_release_arm.apk', 'com.kiwibrowser.browser-arm-v1.0.0-revived.apk', 'arm'),
+              ('/tmp/base_dev_arm.apk', 'com.kiwibrowser.browser.dev-arm-v1.0.0-revived.apk', 'arm'),
+          ]
+
+          ks = os.path.expanduser('~/revived_keystore.jks')
+          for src_apk, out_name, arch in targets:
+              if not os.path.exists(src_apk):
+                  print(f"Skipping {src_apk}: file not found")
+                  continue
+              print(f"Processing {out_name} ({arch})...")
               tmp_unsigned = f'/tmp/{out_name}.unsigned'
               tmp_aligned = f'/tmp/{out_name}.aligned'
               dst_apk = f'kiwi-overlay/out/Release/apks/{out_name}'
@@ -132,21 +156,25 @@ jobs:
                   for info in zin.infolist():
                       if info.filename.startswith('META-INF/'): continue
                       data = zin.read(info.filename)
-                      if info.filename == 'assets/resources.pak': data = patch_datapack(data)
-                      elif info.filename == 'lib/arm64-v8a/libchrome.so': data = patch_libchrome(data)
+                      if info.filename == 'assets/resources.pak':
+                          data = patch_datapack(data)
+                      elif arch == 'arm64' and info.filename == 'lib/arm64-v8a/libchrome.so':
+                          data = patch_libchrome_arm64(data)
+                      elif arch == 'arm' and info.filename == 'lib/armeabi-v7a/libchrome.so':
+                          data = patch_libchrome_arm(data)
                       ni = zipfile.ZipInfo(filename=info.filename, date_time=info.date_time)
                       ni.compress_type = info.compress_type
                       ni.external_attr = info.external_attr
                       zout.writestr(ni, data, compress_type=info.compress_type)
               subprocess.run(['zipalign', '-p', '-f', '4', tmp_unsigned, tmp_aligned], check=True)
-              ks = os.path.expanduser('~/revived_keystore.jks')
               subprocess.run([
                   'apksigner', 'sign', '--ks', ks, '--ks-key-alias', 'kiwi_revived',
                   '--ks-pass', 'pass:public_password', '--key-pass', 'pass:public_password',
                   '--v1-signing-enabled', 'true', '--v2-signing-enabled', 'true', '--v3-signing-enabled', 'true',
                   '--out', dst_apk, tmp_aligned
               ], check=True)
-              subprocess.run(['apksigner', 'verify', '--verbose', '--print-certs', dst_apk], check=True)
+              subprocess.run(['apksigner', 'verify', '--verbose', dst_apk], check=True)
+              print(f"Successfully packaged and signed: {dst_apk}")
           EOF
 
       - name: Upload Signed Kiwi Browser (Revived Edition) APKs
@@ -181,6 +209,7 @@ jobs:
             ---
 
             ### 🔒 What's Included in This Build
+            - **Universal Architecture Support (`arm64` & `arm 32-bit`)**: Full compatibility with 64-bit devices and 32-bit devices (including older MIUI / Android 7 Nougat devices like Redmi 4A, Redmi 5A, Redmi Note 4).
             - **Privacy & Cookie Hardening (`Zero Telemetry`)**: Stripped legacy cross-origin `Access-Control-Allow-Credentials` header injection (`HttpNetworkTransaction`), removed third-party remote script `eval()`, and neutralized background telemetry endpoints (`settings.kiwibrowser.com`, `tiles.kiwibrowser.org`, `logos.kiwibrowser.com`).
             - **Material 3 Glassmorphic UI & Stealth Private Mode**: 100% offline New Tab Page with Aurora/OLED/Daylight themes, Multi-Engine Switcher (`!bang` shortcuts), 4-column Quick Launchpad, and local JSON speed-dial backup.
             - **Android 14/15 & HyperOS Tablet Omnibox Fix**: Null-safe `LocationBarTablet`, `LocationBarMediator`, and `UrlBar` touch/focus guards.
@@ -189,3 +218,5 @@ jobs:
           files: |
             kiwi-overlay/out/Release/apks/com.kiwibrowser.browser-arm64-v1.0.0-revived.apk
             kiwi-overlay/out/Release/apks/com.kiwibrowser.browser.dev-arm64-v1.0.0-revived.apk
+            kiwi-overlay/out/Release/apks/com.kiwibrowser.browser-arm-v1.0.0-revived.apk
+            kiwi-overlay/out/Release/apks/com.kiwibrowser.browser.dev-arm-v1.0.0-revived.apk

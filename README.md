@@ -93,8 +93,28 @@ All pre-built, privacy-audited APK releases are published directly in [**GitHub 
 
 | Package Variant | Architecture | Signing & Co-Installation | Recommended For |
 | :--- | :--- | :--- | :--- |
-| `com.kiwibrowser.browser-arm64-v1.0.0-revived.apk` | `arm64-v8a` (64-bit) | Standard Release (`com.kiwibrowser.browser`) | Primary daily driver on modern phones & tablets |
-| `com.kiwibrowser.browser.dev-arm64-v1.0.0-revived.apk` | `arm64-v8a` (64-bit) | Side-by-Side Edition (`com.kiwibrowser.browser.dev`) | Installing alongside an existing Kiwi installation |
+| `com.kiwibrowser.browser-arm64-v1.0.0-revived.apk` | `arm64-v8a` (64-bit) | Standard Release (`com.kiwibrowser.browser`) | Primary daily driver on modern 64-bit phones & tablets (Android 7.0 - 15+) |
+| `com.kiwibrowser.browser.dev-arm64-v1.0.0-revived.apk` | `arm64-v8a` (64-bit) | Side-by-Side Edition (`com.kiwibrowser.browser.dev`) | 64-bit devices; co-exists with existing Kiwi without uninstalling |
+| `com.kiwibrowser.browser-arm-v1.0.0-revived.apk` | `armeabi-v7a` (32-bit) | Standard Release (`com.kiwibrowser.browser`) | Older 32-bit phones & tablets (MIUI Android 7, Redmi 4A, Redmi 5A, etc.) |
+| `com.kiwibrowser.browser.dev-arm-v1.0.0-revived.apk` | `armeabi-v7a` (32-bit) | Side-by-Side Edition (`com.kiwibrowser.browser.dev`) | 32-bit devices; co-exists with existing Kiwi without uninstalling |
+
+---
+
+### 📱 Android 7 (Nougat) & MIUI Troubleshooting Guide
+
+If the APK fails to install on an older device (such as Xiaomi phones running MIUI on Android 7) with **"App not installed"** or **"There was a problem parsing the package"**, follow these quick steps:
+
+1. **Verify CPU Architecture (32-bit vs 64-bit)**:
+   * Many Android 7 phones (such as Redmi 4A, Redmi 5A, Redmi 4/4X 32-bit, Redmi 3S, Redmi Note 4 MTK) run a **32-bit OS (`armeabi-v7a`)**.
+   * If your phone is 32-bit, download **`com.kiwibrowser.browser-arm-v1.0.0-revived.apk`** (do not use `arm64`).
+2. **Signature Conflict with Previous Kiwi Versions**:
+   * If Kiwi Browser was previously installed from Google Play or older GitHub builds, the new release cannot overwrite it due to differing cryptographic signatures (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`).
+   * **Fix**: Either completely uninstall the old version first, or install the **`.dev`** variant (`com.kiwibrowser.browser.dev`), which installs cleanly side-by-side.
+3. **Disable MIUI Optimization (MIUI 8 / MIUI 9 on Android 7)**:
+   * MIUI's custom package manager often rejects sideloaded packages.
+   * Go to **Settings > About Phone** -> Tap **MIUI version** 7 times to enable Developer Options.
+   * Go to **Settings > Additional Settings > Developer Options** -> Scroll to the bottom and turn off **"Turn on MIUI optimization"**.
+   * Tap the APK to install, then re-enable MIUI optimization if desired.
 
 ---
 
